@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polynomial Secret Solver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="file"]:hover {
+            border-color: #2980b9;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .output-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .output-section.visible {
+            display: block;
+        }
+
+        .output-section h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .result {
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #2c3e50;
+            word-break: break-all;
+        }
+
+        .result.error {
+            border-left-color: #e74c3c;
+            color: #e74c3c;
+        }
+
+        .info {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Polynomial Secret Solver</h1>
+
+        <div class="upload-section">
+            <div class="file-input-wrapper">
+                <input type="file" id="fileInput" accept=".json" />
+            </div>
+            <button id="solveBtn" disabled>Solve</button>
+        </div>
+
+        <div id="output" class="output-section">
+            <h2>Result</h2>
+            <div id="result" class="result"></div>
+            <div id="info" class="info"></div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const solveBtn = document.getElementById('solveBtn');
+        const output = document.getElementById('output');
+        const resultDiv = document.getElementById('result');
+        const infoDiv = document.getElementById('info');
+
+        let jsonData = null;
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        jsonData = JSON.parse(event.target.result);
+                        solveBtn.disabled = false;
+                        showMessage('File loaded successfully!', false);
+                        infoDiv.textContent = '';
+                    } catch (error) {
+                        jsonData = null;
+                        solveBtn.disabled = true;
+                        showMessage('Invalid JSON file: ' + error.message, true);
+                        infoDiv.textContent = '';
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        solveBtn.addEventListener('click', () => {
+            if (!jsonData) {
+                showMessage('Please upload a valid JSON file first.', true);
+                return;
+            }
+
+            try {
+                const result = solvePolynomial(jsonData);
+                showMessage(`Constant term (c) = ${result}`, false);
+                infoDiv.textContent = `Computed using Lagrange interpolation with ${jsonData.keys.k} roots.`;
+            } catch (error) {
+                showMessage('Error: ' + error.message, true);
+                infoDiv.textContent = '';
+            }
+        });
+
+        function showMessage(message, isError) {
+            output.classList.add('visible');
+            resultDiv.textContent = message;
+            if (isError) {
+                resultDiv.classList.add('error');
+            } else {
+                resultDiv.classList.remove('error');
+            }
+        }
+
+        // Convert a string in given base to BigInt (safe for large numbers)
+        function baseToDecimal(value, base) {
+            if (base < 2 || base > 36) {
+                throw new Error(`Invalid base: ${base}. Base must be between 2 and 36.`);
+            }
+
+            const digits = '0123456789abcdefghijklmnopqrstuvwxyz';
+            const valueStr = value.toLowerCase().trim();
+            let result = 0n;
+            const baseBig = BigInt(base);
+
+            for (let i = 0; i < valueStr.length; i++) {
+                const char = valueStr[i];
+                const digitValue = digits.indexOf(char);
+
+                if (digitValue === -1 || digitValue >= base) {
+                    throw new Error(`Invalid digit '${char}' for base ${base}`);
+                }
+
+                result = result * baseBig + BigInt(digitValue);
+            }
+
+            return result;
+        }
+
+        // Parse roots from JSON
+        function parseRoots(data) {
+            const roots = [];
+
+            for (const key in data) {
+                if (key === 'keys') continue;
+
+                const x = BigInt(key);
+                const base = parseInt(data[key].base);
+                const value = data[key].value;
+                const y = baseToDecimal(value, base);
+
+                roots.push({ x, y });
+            }
+
+            // Sort by x value
+            roots.sort((a, b) => {
+                if (a.x < b.x) return -1;
+                if (a.x > b.x) return 1;
+                return 0;
+            });
+
+            return roots;
+        }
+
+        // Compute GCD for exact division verification
+        function gcd(a, b) {
+            a = a < 0n ? -a : a;
+            b = b < 0n ? -b : b;
+            while (b !== 0n) {
+                const temp = b;
+                b = a % b;
+                a = temp;
+            }
+            return a;
+        }
+
+        // Lagrange interpolation to find f(0) - the constant term
+        function lagrangeInterpolation(roots) {
+            let result = 0n;
+
+            for (let i = 0; i < roots.length; i++) {
+                let numerator = 1n;
+                let denominator = 1n;
+
+                // Calculate Lagrange basis polynomial L_i(0)
+                for (let j = 0; j < roots.length; j++) {
+                    if (i !== j) {
+                        // For f(0): numerator *= (0 - x_j) = -x_j
+                        numerator *= -roots[j].x;
+                        // denominator *= (x_i - x_j)
+                        denominator *= (roots[i].x - roots[j].x);
+                    }
+                }
+
+                // Simplify fraction using GCD
+                const g = gcd(numerator, denominator);
+                numerator /= g;
+                denominator /= g;
+
+                // Ensure denominator is positive
+                if (denominator < 0n) {
+                    numerator = -numerator;
+                    denominator = -denominator;
+                }
+
+                // Check for exact division
+                if (denominator !== 1n) {
+                    throw new Error('Division is not exact. The polynomial may not have integer coefficients.');
+                }
+
+                // Add contribution: y_i * L_i(0)
+                result += roots[i].y * numerator;
+            }
+
+            return result;
+        }
+
+        function solvePolynomial(data) {
+            // Validate JSON structure
+            if (!data.keys || !data.keys.n || !data.keys.k) {
+                throw new Error('Invalid JSON structure: missing keys.n or keys.k');
+            }
+
+            const n = parseInt(data.keys.n);
+            const k = parseInt(data.keys.k);
+
+            if (isNaN(n) || isNaN(k)) {
+                throw new Error('Invalid values for n or k');
+            }
+
+            if (k < 2) {
+                throw new Error('k must be at least 2 to define a polynomial');
+            }
+
+            // Parse all roots
+            const allRoots = parseRoots(data);
+
+            if (allRoots.length < k) {
+                throw new Error(`Not enough roots: found ${allRoots.length}, need ${k}`);
+            }
+
+            // Select exactly k roots (first k after sorting by x)
+            const selectedRoots = allRoots.slice(0, k);
+
+            // Compute constant term using Lagrange interpolation at x=0
+            const constantTerm = lagrangeInterpolation(selectedRoots);
+
+            return constantTerm.toString();
+        }
+    </script>
+</body>
+</html>
